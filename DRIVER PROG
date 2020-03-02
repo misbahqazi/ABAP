@@ -1,0 +1,108 @@
+*&---------------------------------------------------------------------*
+*& Report ZDEMO_ALVGRID_CLASSES
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zdemo_smartform_driver.
+
+CLASS lcl_class DEFINITION DEFERRED.
+DATA: lo_class TYPE REF TO lcl_class.
+
+CLASS lcl_class DEFINITION FINAL.
+  PUBLIC SECTION.
+    DATA lv_fname TYPE rs38l_fnam.
+
+*    DATA: w_ekpo TYPE zdemo_s_smartform.
+
+    DATA: i_ekpo TYPE zdemo_tt_smartform.
+
+    METHODS : get_data,
+*      build_events,
+      form_display.
+
+ENDCLASS.
+
+PARAMETERS p_ebeln TYPE ekko-ebeln DEFAULT '4500000148'.
+
+INITIALIZATION.
+
+  CREATE OBJECT lo_class.
+
+START-OF-SELECTION.
+
+  CALL METHOD lo_class->get_data( ).
+
+CLASS lcl_class IMPLEMENTATION.
+
+  METHOD get_data.
+    SELECT ebeln,ebelp,a~matnr,maktx,bukrs,menge,meins
+      FROM ekpo AS a INNER JOIN makt AS b
+      ON a~matnr = b~matnr
+      INTO TABLE @i_ekpo
+      WHERE ebeln = @p_ebeln
+        AND b~spras = @sy-langu.
+    IF sy-subrc = 0.
+      lo_class->form_display( ).
+    ENDIF.
+  ENDMETHOD.
+
+*&---------------------------------------------------------------------*
+*&      Form  build_events
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  METHOD build_events.
+*
+*  ENDMETHOD.
+
+*&---------------------------------------------------------------------*
+*&      Form  list_display
+*&---------------------------------------------------------------------*
+  METHOD form_display.
+
+    DATA: fm_name   TYPE rs38l_fnam.
+
+    CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+      EXPORTING
+        formname                 = 'ZDEMO_FORM1'
+*       VARIANT                  = ' '
+*       DIRECT_CALL              = ' '
+     IMPORTING
+       FM_NAME                  = fm_name
+     EXCEPTIONS
+       NO_FORM                  = 1
+       NO_FUNCTION_MODULE       = 2
+       OTHERS                   = 3
+              .
+    IF sy-subrc = 0.
+      CALL FUNCTION fm_name
+        EXPORTING
+*         ARCHIVE_PARAMETERS         =
+*         CONTROL_PARAMETERS         =
+*         OUTPUT_OPTIONS   =
+          lv_ebeln         = p_ebeln
+*       IMPORTING
+*         DOCUMENT_OUTPUT_INFO       =
+*         JOB_OUTPUT_INFO  =
+*         JOB_OUTPUT_OPTIONS         =
+        TABLES
+          lt_tab           = i_ekpo
+        EXCEPTIONS
+          formatting_error = 1
+          internal_error   = 2
+          send_error       = 3
+          user_canceled    = 4
+          OTHERS           = 5.
+
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+    ENDIF.
+
+
+*    cl_demo_output=>display( i_ekpo ).
+
+  ENDMETHOD.
+
+ENDCLASS.
