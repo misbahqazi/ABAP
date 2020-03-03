@@ -1,0 +1,234 @@
+*&---------------------------------------------------------------------*
+*& Report ZDEMO_ALVGRID_CLASSES
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zdemo_smartform_driver.
+
+CLASS lcl_class DEFINITION DEFERRED.
+DATA: lo_class TYPE REF TO lcl_class.
+
+DATA: lt_otf       TYPE itcoo OCCURS 0 WITH HEADER LINE,
+      lt_tline     TYPE TABLE OF tline,
+      lt_receivers TYPE TABLE OF somlreci1 WITH HEADER LINE,
+      lt_record    TYPE TABLE OF solisti1, " OCCURS 0 WITH HEADER LINE,
+      ls_record    LIKE LINE OF lt_record,
+
+      lt_objpack   TYPE TABLE OF sopcklsti1,
+      ls_objpack   TYPE sopcklsti1,
+      lt_objtxt    TYPE TABLE OF solisti1,
+      ls_objtxt    TYPE solisti1,
+      lt_objbin    LIKE solisti1 OCCURS 0 WITH HEADER LINE,
+      lt_reclist   TYPE TABLE OF somlreci1,
+      ls_reclist   TYPE somlreci1.
+
+CLASS lcl_class DEFINITION FINAL.
+  PUBLIC SECTION.
+    DATA lv_fname TYPE rs38l_fnam.
+
+*    DATA: w_ekpo TYPE zdemo_s_smartform.
+
+    DATA: i_ekpo TYPE zdemo_tt_smartform.
+
+    METHODS : get_data,
+*      build_events,
+      form_display.
+
+ENDCLASS.
+
+PARAMETERS p_ebeln TYPE ekko-ebeln DEFAULT '4500000148'.
+
+INITIALIZATION.
+
+  CREATE OBJECT lo_class.
+
+START-OF-SELECTION.
+
+  CALL METHOD lo_class->get_data( ).
+
+CLASS lcl_class IMPLEMENTATION.
+
+  METHOD get_data.
+    SELECT ebeln,ebelp,a~matnr,maktx,bukrs,menge,meins
+      FROM ekpo AS a INNER JOIN makt AS b
+      ON a~matnr = b~matnr
+      INTO TABLE @i_ekpo
+      WHERE ebeln = @p_ebeln
+        AND b~spras = @sy-langu.
+    IF sy-subrc = 0.
+      lo_class->form_display( ).
+    ENDIF.
+  ENDMETHOD.
+
+*&---------------------------------------------------------------------*
+*&      Form  build_events
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  METHOD build_events.
+*
+*  ENDMETHOD.
+
+*&---------------------------------------------------------------------*
+*&      Form  list_display
+*&---------------------------------------------------------------------*
+  METHOD form_display.
+
+    DATA: fm_name         TYPE rs38l_fnam,
+
+          ls_controlparam TYPE ssfctrlop,
+          ls_outopt       TYPE ssfcompop,
+          ls_objhead      TYPE soli_tab,
+          ls_doc_chng     TYPE sodocchgi1,
+          ls_data         TYPE sodocchgi1,
+          ls_outputjob    TYPE ssfcrescl,
+          lv_len_in       TYPE sood-objlen,
+          lv_len_out      TYPE sood-objlen,
+          lv_len_outn     TYPE i,
+          lv_lines_txt    TYPE i,
+          ls_buffer       TYPE string,
+          lv_lines_bin    TYPE i.
+
+    CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+      EXPORTING
+        formname           = 'ZDEMO_FORM1'
+*       VARIANT            = ' '
+*       DIRECT_CALL        = ' '
+      IMPORTING
+        fm_name            = fm_name
+      EXCEPTIONS
+        no_form            = 1
+        no_function_module = 2
+        OTHERS             = 3.
+
+    ls_controlparam-getotf    = abap_true.
+    ls_controlparam-no_dialog = abap_true.
+    ls_outopt-tdnoprev        = abap_true.
+
+    IF sy-subrc = 0.
+      CALL FUNCTION fm_name
+        EXPORTING
+          control_parameters = ls_controlparam
+          output_options     = ls_outopt
+          lv_ebeln           = p_ebeln
+        IMPORTING
+          job_output_info    = ls_outputjob
+        TABLES
+          lt_tab             = i_ekpo
+        EXCEPTIONS
+          formatting_error   = 1
+          internal_error     = 2
+          send_error         = 3
+          user_canceled      = 4
+          OTHERS             = 5.
+
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+      lt_otf[] = ls_outputjob-otfdata[].
+    ENDIF.
+
+    CALL FUNCTION 'CONVERT_OTF'
+      EXPORTING
+        format                = 'PDF'
+        max_linewidth         = 132
+      IMPORTING
+        bin_filesize          = lv_len_in
+      TABLES
+        otf                   = lt_otf
+        lines                 = lt_tline
+      EXCEPTIONS
+        err_max_linewidth     = 1
+        err_format            = 2
+        err_conv_not_possible = 3
+        OTHERS                = 4.
+    IF sy-subrc <> 0.
+    ENDIF.
+
+    LOOP AT lt_tline ASSIGNING FIELD-SYMBOL(<lfs_line>).
+      TRANSLATE <lfs_line> USING '~'.
+      CONCATENATE ls_buffer <lfs_line> INTO ls_buffer.
+    ENDLOOP.
+    TRANSLATE ls_buffer USING '~'.
+
+    DO.
+      ls_record = ls_buffer.
+      APPEND ls_record TO lt_record.
+      SHIFT ls_buffer LEFT BY 255 PLACES.
+      IF ls_buffer IS INITIAL.
+        EXIT.
+      ENDIF.
+      CLEAR ls_record.
+    ENDDO.
+
+    REFRESH: lt_reclist,
+          lt_objtxt,
+          lt_objbin,
+          lt_objpack.
+    CLEAR ls_objhead.
+
+    lt_objbin[] = lt_record[].
+
+    ls_objtxt = 'Smartform as a PDF attachment'.
+    APPEND ls_objtxt TO lt_objtxt.
+    DESCRIBE TABLE lt_objtxt LINES lv_lines_txt.
+    READ TABLE lt_objtxt TRANSPORTING NO FIELDS INDEX lv_lines_txt.
+    ls_doc_chng-obj_name = 'smartform'.
+    ls_doc_chng-expiry_dat = sy-datum + 10.
+    ls_doc_chng-obj_descr = 'smartform'.
+    ls_doc_chng-sensitivty = 'F'.
+    ls_doc_chng-doc_size = lv_lines_txt * 255.
+* Main Text
+    CLEAR ls_objpack-transf_bin.
+    ls_objpack-head_start = 1.
+    ls_objpack-head_num = 0.
+    ls_objpack-body_start = 1.
+    ls_objpack-body_num = lv_lines_txt.
+    ls_objpack-doc_type = 'RAW'.
+    APPEND ls_objpack TO lt_objpack.
+* Attachment (pdf-Attachment)
+    ls_objpack-transf_bin = 'X'.
+    ls_objpack-head_start = 1.
+    ls_objpack-head_num = 0.
+    ls_objpack-body_start = 1.
+    DESCRIBE TABLE lt_objbin LINES lv_lines_bin.
+    READ TABLE lt_objbin TRANSPORTING NO FIELDS INDEX lv_lines_bin.
+    ls_objpack-doc_size = lv_lines_bin * 255 .
+    ls_objpack-body_num = lv_lines_bin.
+    ls_objpack-doc_type = 'PDF'.
+    ls_objpack-obj_name = 'smart'.
+    ls_objpack-obj_descr = 'test'.
+    APPEND ls_objpack TO lt_objpack.
+    CLEAR :lt_reclist,ls_reclist.
+    ls_reclist-receiver = 'misbah.qazi90@gmail.com'.
+    ls_reclist-rec_type = 'U'.
+    APPEND ls_reclist TO lt_reclist.
+    CALL FUNCTION 'SO_NEW_DOCUMENT_ATT_SEND_API1'
+      EXPORTING
+        document_data              = ls_doc_chng
+        put_in_outbox              = 'X'
+        commit_work                = 'X'
+      TABLES
+        packing_list               = lt_objpack
+        object_header              = ls_objhead
+        contents_bin               = lt_objbin
+        contents_txt               = lt_objtxt
+        receivers                  = lt_reclist
+      EXCEPTIONS
+        too_many_receivers         = 1
+        document_not_sent          = 2
+        document_type_not_exist    = 3
+        operation_no_authorization = 4
+        parameter_error            = 5
+        x_error                    = 6
+        enqueue_error              = 7
+        OTHERS                     = 8.
+
+    IF sy-subrc = 0.
+      MESSAGE 'Smartform attachment sent successfully!' TYPE 'S' DISPLAY LIKE 'I'.
+    ENDIF.
+
+  ENDMETHOD.
+
+ENDCLASS.
