@@ -1,0 +1,139 @@
+@AbapCatalog.sqlViewName: 'ZDEMOC_CDS'
+@AbapCatalog.compiler.compareFilter: true
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Standard Management Reporting'
+@VDM.viewType: #CONSUMPTION
+@Search.searchable: true
+@Analytics.query: true
+//@OData.publish: true
+
+@ClientHandling.algorithm: #SESSION_VARIABLE
+@ObjectModel.usageType.sizeCategory: #XXL
+@ObjectModel.usageType.serviceQuality: #D
+@ObjectModel.usageType.dataClass: #MIXED
+
+define view zdemo_consumption
+  with parameters
+    @EndUserText.label: 'Currency'
+    @Consumption.defaultValue: 'USD'
+    P_DisplayCurrency  : vdm_v_display_currency
+//    @Consumption.hidden: true
+//    @Environment.systemField: #SYSTEM_DATE
+//    P_TodayDate        : sydate,
+//    @Consumption:
+//     { derivation: { lookupEntity: 'ZFINV_PERIOD_LOOKUP',
+//       resultElement: 'CyfiscalYear', binding: [{ targetParameter: 'P_TodayDate',
+//       type: #PARAMETER, value: 'P_TodayDate'}]} }
+//    @EndUserText.label: 'Current Year'
+//    p_year             : gjahr,
+//    @Consumption:
+//     { derivation: { lookupEntity: 'ZFINV_PERIOD_LOOKUP',
+//       resultElement: 'CyfiscalPeriod', binding: [{ targetParameter: 'P_TodayDate',
+//       type: #PARAMETER, value: 'P_TodayDate'}]} }
+//    @EndUserText.label: 'Fiscal Period'
+//    p_postperiod       : poper,
+//    @EndUserText.label: 'G/L Account (Hierarchy)'
+//    @Consumption: {valueHelp:'_fsv.GLAccountHierarchy', defaultValue: 'ZACN'}
+//    p_fsv              : versn_011
+
+  as select from zdemo_composite2(P_DisplayCurr: $parameters.P_DisplayCurrency
+//                                   p_versn  :     $parameters.p_fsv
+                                   )
+
+{
+
+  @Consumption.filter: { selectionType: #SINGLE, multipleSelections: true, mandatory: false,defaultValue: '1001' }
+  @AnalyticsDetails.query.axis: #COLUMNS
+  @ObjectModel.foreignKey.association: '_CompanyCode'
+  CompanyCode,
+  @ObjectModel.foreignKey.association: '_ProfitCenter'
+  @AnalyticsDetails.query.display: #TEXT
+  @Consumption.filter: { selectionType: #SINGLE, multipleSelections: true, mandatory: false }
+  @Search.defaultSearchElement: true
+  ProfitCenter,
+
+  FiscalYear,
+  FiscalYearPeriod,
+  @ObjectModel.foreignKey.association: '_CostCenter'
+  @AnalyticsDetails.query.display: #TEXT
+  @Consumption.filter: { selectionType: #SINGLE, multipleSelections: true, mandatory: false }
+  @Search.defaultSearchElement: true
+  CostCenter,
+//  @ObjectModel.foreignKey.association: '_FunctionArea'
+//  @AnalyticsDetails.query.display: #TEXT
+//  @Consumption.filter:
+//    { selectionType: #HIERARCHY_NODE, multipleSelections: true, mandatory: false
+//        ,hierarchyBinding: [{type: #CONSTANT,value: '0112/ALL', variableSequence: 1 }]
+//    }
+//  FunctionalArea,
+  @ObjectModel.foreignKey.association: '_Customer'
+  Customer,
+//  @Consumption.filter:
+//  { selectionType: #HIERARCHY_NODE,multipleSelections:true, mandatory: true,
+//      hierarchyBinding: [{type: #CONSTANT, value: 'ZACN' , variableSequence: 1 }] }
+//  @AnalyticsDetails.query: { axis: #ROWS,displayHierarchy: #FILTER,totals: #HIDE,display: #TEXT }
+  GLAccount,
+//
+//  @Semantics.unitOfMeasure: true
+////  @EndUserText.label: '%'
+//  cast( '%' as abap.unit( 3 ) ) as unit_percent,
+
+  //   Selected Period Amount Actuals
+  @EndUserText.label: 'Current year converted'
+  @DefaultAggregation: #SUM
+  currentyearUSD,
+
+  //   Quarterly Actuals based on current fiscalyear selected period
+  @EndUserText.label: 'Previous year converted'
+    @DefaultAggregation: #SUM
+  previousyearUSD,
+  
+  //   Year to Date Amount Actuals / Source ACDOCA
+  @EndUserText.label: 'Current year Unconverted'
+    @DefaultAggregation: #SUM
+  currentyear,
+
+  //   Quarterly Actuals current fiscal year selected period
+  @EndUserText.label: 'Previous Year Unconverted'
+    @DefaultAggregation: #SUM
+  previousyear,
+
+  //   Current year QTD Actuals / Previous Year QTD actuals
+  @EndUserText.label: 'QTD v Full Qtr (%)'
+//  @Semantics.quantity.unitOfMeasure: 'unit_percent'
+  @DefaultAggregation: #FORMULA
+  @AnalyticsDetails.query.formula: 'NDIV0( currentyear / previousyear)'
+  @AnalyticsDetails.query.decimals: 2
+  1                             as eoro_ratio,
+
+
+  //   YTD Actuals / Budget for current year (%)
+  @EndUserText.label: 'YTD v Full Year (%)'
+//  @Semantics.quantity.unitOfMeasure: 'unit_percent'
+  @DefaultAggregation: #FORMULA
+  @AnalyticsDetails.query.formula: 'NDIV0( currentyearUSD / previousyearUSD )'
+  @AnalyticsDetails.query.decimals: 2
+  1                             as usd_ratio, //     act_planper,
+
+  @EndUserText.label: 'Current Year - Previos Year'
+  @DefaultAggregation: #FORMULA
+  @Semantics.amount.currencyCode: 'Displaycurrency'
+  @AnalyticsDetails.query.formula: 'currentyearUSD - previousyearUSD'
+  @AnalyticsDetails.query.decimals: 2
+  1                             as converted_diff, //     act_planper,
+
+  @EndUserText.label: 'Current Year - Previos Year'
+  @DefaultAggregation: #FORMULA
+  @Semantics.amount.currencyCode: 'Displaycurrency'
+  @AnalyticsDetails.query.formula: 'currentyear - previousyear'
+  @AnalyticsDetails.query.decimals: 2
+  1                             as unconverted_diff //     act_planper,
+
+
+//  //   Period Wise breakup of above measures
+//  @ObjectModel.foreignKey.association: '_FiscalYear'
+//  //     @AnalyticsDetails.query.axis: #COLUMNS
+//  FiscalPeriod
+//  
+}
+
