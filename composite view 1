@@ -1,0 +1,131 @@
+@AbapCatalog.sqlViewName: 'ZDEMOBASE'
+@AbapCatalog.compiler.compareFilter: true
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'COGS composite view with calculations'
+@VDM.viewType: #COMPOSITE
+@Analytics: { dataCategory: #CUBE }
+
+define view zdemo_composite1
+    with parameters 
+                                     P_DisplayCurr  : vdm_v_display_currency
+//                                     p_year       : gjahr,
+//                                     p_fiscper    : poper
+//                                     p_versn      : versn_011
+as select distinct from I_GLAccountLineItemSemTag as I_GLAccountLineItem //I_ActualPlanLineItemSemTag
+//
+//// Association for G/L Account Hierarchy
+//association [0..*] to I_FinancialStatementHierarchy as _Hierarchy
+//                                         on $projection.GLAccountHierarchy = _Hierarchy.GLAccountHierarchy
+{
+      @ObjectModel.foreignKey.association: '_Ledger'
+  key Ledger,
+      @ObjectModel.foreignKey.association: '_SourceLedger'
+  key SourceLedger,
+      @ObjectModel.foreignKey.association: '_CompanyCode'
+  key I_GLAccountLineItem.CompanyCode,
+      @ObjectModel.foreignKey.association: '_JournalEntry'
+  key AccountingDocument,
+  key LedgerGLLineItem,
+      @ObjectModel.foreignKey.association: '_Hierarchy'
+      GLAccountHierarchy,
+      @ObjectModel.foreignKey.association: '_FiscalYear'
+      FiscalYear,
+      @Semantics.fiscal.period: true
+      FiscalPeriod,       
+      @Semantics.fiscal.yearVariant: true
+      FiscalYearVariant,
+      @Semantics.fiscal.yearPeriod: true
+      FiscalYearPeriod,
+      
+      @ObjectModel.foreignKey.association: '_CostCenter'
+      CostCenter,
+      @ObjectModel.foreignKey.association: '_ProfitCenter'
+      I_GLAccountLineItem.ProfitCenter,
+      @ObjectModel.foreignKey.association: '_FunctionalArea'
+      FunctionalArea,
+      @ObjectModel.foreignKey.association: '_BusinessArea'
+      BusinessArea,
+      @ObjectModel.foreignKey.association: '_ChartOfAccounts'
+      ChartOfAccounts,
+//      @ObjectModel.foreignKey.association: '_ControllingArea'
+      I_GLAccountLineItem.ControllingArea,
+      @ObjectModel.foreignKey.association: '_GLAccountInChartOfAccounts'
+      GLAccount,
+//      @ObjectModel.foreignKey.association: '_Customer'
+      Customer,
+      @ObjectModel.foreignKey.association: '_TransactionCurrency'
+      @Semantics.currencyCode:true
+      TransactionCurrency                as  TransactionCurrency,
+      
+      @Semantics: { amount : {currencyCode: 'TransactionCurrency'} }
+      @DefaultAggregation: #SUM
+      AmountInTransactionCurrency,
+      
+
+      cast(:P_DisplayCurr as vdm_v_display_currency) as  DisplayCurrency,
+//    
+      @Semantics: { amount : {currencyCode: ':P_DisplayCurr'} }      
+      @DefaultAggregation: #SUM
+      case when FiscalYearPeriod between '2020001' and '2020012'
+      then currency_conversion(
+                     amount => AmountInGlobalCurrency, //TransactionCurrency,
+                     source_currency => GlobalCurrency, //TransactionCurrency,
+                     target_currency => :P_DisplayCurr,
+                     exchange_rate_date => PostingDate,
+                     round => #CDSBoolean.true )
+//                     decimal_shift => #CDSBoolean.true,
+//                     decimal_shift_back => #CDSBoolean.true )
+      else cast ( cast ('0' as abap.curr( 23,2) ) as fins_vwcur12 ) 
+      end as currentyearUSD, 
+//      
+      @Semantics: { amount : {currencyCode: ':P_DisplayCurr'} }      
+      @DefaultAggregation: #SUM
+      case when FiscalYearPeriod between '2019001' and '2019012' 
+      then currency_conversion(
+                     amount => AmountInGlobalCurrency, //TransactionCurrency,
+                     source_currency => GlobalCurrency, //TransactionCurrency,
+                     target_currency => :P_DisplayCurr,
+                     exchange_rate_date => PostingDate,
+                     round => #CDSBoolean.true )
+      else cast ( cast ('0' as abap.curr( 23,2) ) as fins_vwcur12 ) 
+      end as previousyearUSD, 
+   
+      @Semantics: { amount : {currencyCode: ':P_DisplayCurr'} }
+      @DefaultAggregation: #SUM
+      case when FiscalYearPeriod between '2019001' and '2019012' 
+      then AmountInGlobalCurrency
+      else cast ( cast ('0' as abap.curr( 23,2) ) as fins_vwcur12 ) 
+      end as previousyear,
+
+
+      @Semantics: { amount : {currencyCode: ':P_DisplayCurr'} }
+      @DefaultAggregation: #SUM
+      case when FiscalYearPeriod between '2020001' and '2020012' 
+      then AmountInGlobalCurrency
+      else cast ( cast ('0' as abap.curr( 23,2) ) as fins_vwcur12 ) 
+      end as currentyear,
+      
+      _Ledger,
+      _SourceLedger,
+      _CompanyCode,
+      I_GLAccountLineItem._FiscalYear,
+//      _FiscalPeriod,
+      _JournalEntry,
+      _Hierarchy,
+//      _SemanticTag,
+  //    _Segment,
+      _ProfitCenter,
+      _CostCenter,
+      _BusinessArea,
+      _FunctionalArea,
+      I_GLAccountLineItem._ControllingArea,
+      _ChartOfAccounts,
+//      _Customer,
+      _TransactionCurrency,
+      _GLAccountInChartOfAccounts
+
+}
+where FiscalYear between '2019' and '2020'
+ and Ledger = '0L' 
+ and DebitCreditCode = 'S'
+// and GLAccount = '0650250010'
