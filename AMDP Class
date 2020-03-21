@@ -1,0 +1,54 @@
+CLASS zdemo_amdp DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC .
+
+  PUBLIC SECTION.
+
+  interfaces if_amdp_marker_hdb.
+
+  TYPES : BEGIN OF gty_tcode,
+            tcode TYPE AGVAL,
+            ttext TYPE ttext_stct,
+            role TYPE agr_name,
+            rtext TYPE agr_title,
+          END OF gty_tcode.
+
+  TYPES : tt_tcode TYPE standard TABLE OF gty_Tcode.
+
+  METHODS : get_tcode_role_matrix
+            IMPORTING
+                VALUE(ip_tcode) TYPE tcode
+                VALUE(ip_object) TYPE agobject
+                VALUE(ip_langu) TYPE menu_spras
+                VALUE(ip_line) TYPE menu_num_5
+            EXPORTING
+                VALUE(et_it_tcode_role) TYPE tt_tcode.
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+ENDCLASS.
+
+
+CLASS zdemo_amdp IMPLEMENTATION.
+
+METHOD get_tcode_role_matrix
+       BY DATABASE PROCEDURE
+       FOR HDB LANGUAGE SQLSCRIPT
+       OPTIONS READ-ONLY
+       USING agr_1251 tstct agr_Texts.
+
+       et_it_tcode_role = select a.low as tcode,b.ttext,a.agr_name as role,c.text as rtext
+                            FROM agr_1251 as a INNER JOIN tstct as b
+                                          on a.low = b.tcode
+                            inner join agr_texts as c
+                                                 on a.agr_name = c.agr_name
+
+                          where a.low   = :ip_tcode
+                            AND a.object = :ip_object
+                            and b.sprsl  = :ip_langu
+                            and c.spras  = :ip_langu
+                            and c.line   = :ip_line
+                            order by a.low,a.agr_name;
+
+ENDMETHOD.
+ENDCLASS.
