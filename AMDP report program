@@ -1,0 +1,67 @@
+*&---------------------------------------------------------------------*
+*& Report ZDEMO_AMDP_CALL
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZDEMO_AMDP_CALL NO STANDARD PAGE HEADING LINE-COUNT 132.
+
+*--------------------------------------------------------------------*
+* DATA DECLARATION
+*--------------------------------------------------------------------*
+* Inline data declaration for the AMDP Class Instance
+DATA(lr_data) = NEW zdemo_amdp( ).
+
+*--------------------------------------------------------------------*
+* SELECTION SCREEN
+*--------------------------------------------------------------------*
+SELECTION-SCREEN: BEGIN OF BLOCK block1 WITH FRAME TITLE text-t01.
+PARAMETERS p_tcode TYPE tcode.
+SELECTION-SCREEN: END OF BLOCK block1.
+
+*--------------------------------------------------------------------*
+* INITIALIZATION.
+*--------------------------------------------------------------------*
+
+*--------------------------------------------------------------------*
+* START-OF-SELECTION.
+*--------------------------------------------------------------------*
+START-OF-SELECTION.
+
+* Calling the AMDP method to get the data
+CALL METHOD lr_data->get_tcode_role_matrix
+EXPORTING
+ip_tcode = p_tcode
+ip_object = 'S_TCODE'
+ip_langu = sy-langu
+ip_line = '00000'
+IMPORTING
+et_it_tcode_role = DATA(it_tcode_role).
+
+
+*--------------------------------------------------------------------*
+* If you are in ABAP 740 and SP 5 and above but still not in HANA,
+* You can connect from Eclipse/HANA Studio and create AMDP but
+* cannot execute in database layer. You can try below code for
+* normal Class-Method call.
+*--------------------------------------------------------------------*
+** Normal method call at AS ABAP Layer
+* CALL METHOD lr_data->get_t_code_role_matrix_nonamdp
+* EXPORTING
+* ip_tcode = p_tcode
+* ip_object = 'S_TCODE'
+* ip_langu = sy-langu
+* ip_line = '00000'
+* IMPORTING
+* ex_it_tcode_role = DATA(it_tcode_role).
+*--------------------------------------------------------------------*
+
+*--------------------------------------------------------------------*
+* END-OF-SELECTION.
+*--------------------------------------------------------------------*
+END-OF-SELECTION.
+
+* Publishing the data in an output
+cl_demo_output=>display_data(
+EXPORTING
+value = it_tcode_role
+name = 'AMDP Usage to display the TCode and Role' ).
