@@ -18,6 +18,15 @@ SELECTION-SCREEN: BEGIN OF BLOCK block1 WITH FRAME TITLE text-t01.
 PARAMETERS p_tcode TYPE tcode.
 SELECTION-SCREEN: END OF BLOCK block1.
 
+**--------------------------------------------------------------------*
+** SELECTION SCREEN
+**--------------------------------------------------------------------*
+*SELECTION-SCREEN: BEGIN OF BLOCK block1 WITH FRAME TITLE text-t01.
+*SELECT-OPTIONS:
+*s_tcode FOR syst-tcode,
+*s_role FOR agr_define-agr_name.
+*SELECTION-SCREEN: END OF BLOCK block1.
+
 *--------------------------------------------------------------------*
 * INITIALIZATION.
 *--------------------------------------------------------------------*
@@ -26,6 +35,15 @@ SELECTION-SCREEN: END OF BLOCK block1.
 * START-OF-SELECTION.
 *--------------------------------------------------------------------*
 START-OF-SELECTION.
+
+** Build where clause for data fetching
+** Class-Method to convert the select options to a dynamic where clause which
+** will be passed to the AMDP for data filteration after data selection
+*DATA(lv_where) = cl_shdb_seltab=>combine_seltabs(
+*it_named_seltabs = VALUE #(
+*( name = 'TCODE' dref = REF #( s_tcode[] ) )
+*( name = 'ROLE' dref = REF #( s_role[] ) )
+*) ).
 
 * Calling the AMDP method to get the data
 CALL METHOD lr_data->get_tcode_role_matrix
