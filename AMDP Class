@@ -49,6 +49,10 @@ METHOD get_tcode_role_matrix
                             and c.spras  = :ip_langu
                             and c.line   = :ip_line
                             order by a.low,a.agr_name;
+                            
+* Filtration based on Selection screen input
+*        et_it_tcode_role = APPLY_FILTER( :et_it_tcode_role, :ip_filters );
+                    
 
 ENDMETHOD.
 ENDCLASS.
