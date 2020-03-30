@@ -1,0 +1,356 @@
+REPORT zdemo_adbc_example.
+
+* Type for output
+TYPES: BEGIN OF ty_result,
+         matnr TYPE matnr,
+         mtart TYPE mtart,
+         maktx TYPE maktx,
+       END OF ty_result.
+
+* Data declaration
+DATA: lr_sql_connection         TYPE REF TO cl_sql_connection,
+      lr_sql_statement          TYPE REF TO cl_sql_statement,
+      lr_sql_result_set         TYPE REF TO cl_sql_result_set,
+      lr_sql_exception          TYPE REF TO cx_sql_exception,
+      lr_sql_parameter_invalid  TYPE REF TO cx_parameter_invalid,
+      lr_parameter_invalid_type TYPE REF TO cx_parameter_invalid_type,
+      lr_salv_exception         TYPE REF TO cx_salv_msg,
+      lr_salv_alv               TYPE REF TO cl_salv_table,
+      lt_result                 TYPE STANDARD TABLE OF ty_result,
+      ls_result                 TYPE ty_result,
+      lr_data                   TYPE REF TO data,
+      lv_where_clause_statement TYPE string,
+      lv_error_text             TYPE string,
+      lv_where_mandt            TYPE string,
+      lv_where_spras            TYPE string.
+
+* Selection screen fields
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME.
+SELECT-OPTIONS : s_matnr FOR ls_result-matnr,
+s_mtart FOR ls_result-mtart.
+SELECTION-SCREEN END OF block b1.
+
+* Connect to dabatabse (HANA or Non-HANA)
+* 1 Set the database connection
+PERFORM make_db_connection.
+
+* Instantiate SQL Statement
+* i.e Get the SQL Statement reference using the instance of the connection
+* 2. Instantiate the statement object
+PERFORM ini_sql_statement.
+
+* Prepare Native SQL statements
+* 3. Construct the SQL using Concatenate syntax or string operation
+PERFORM prepare_native_sql_string.
+
+* Using the reference of the statement call, the respective methods to execute the query
+* 4. Issue Native SQL Call
+PERFORM issue_native_sql_call.
+
+* Get the result of the query in a table
+* 5. Assign Target variable for result set
+PERFORM assign_target_result.
+
+* 6. Retrieve Result set
+PERFORM retrieve_complete_result_set.
+
+* 7. Close the query, release resource
+PERFORM close_query.
+
+* 8. Close DB Connection
+PERFORM close_db_connection.
+
+* 9. Display output
+PERFORM display_result.
+**&---------------------------------------------------------------------*
+**& Sub Routines
+**&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form MAKE_DB_CONNECTION
+*&---------------------------------------------------------------------*
+* Connect to database
+*----------------------------------------------------------------------*
+FORM make_db_connection .
+
+  TRY.
+* Get the DB (HANA/Non HANA) Connection
+* If we do not pass the DB name, it would pull the default database
+      lr_sql_connection ?= cl_sql_connection=>get_connection( ).
+
+* 10. Catch errors/exceptions (if any)
+    CATCH cx_parameter_invalid_type INTO lr_parameter_invalid_type.
+      lv_error_text = lr_parameter_invalid_type->get_text( ).
+*MESSAGE e000 WITH lv_error_text.
+
+    CATCH cx_parameter_invalid INTO lr_sql_parameter_invalid.
+      lv_error_text = lr_sql_parameter_invalid->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+    CATCH cx_sql_exception INTO lr_sql_exception.
+      lv_error_text = lr_sql_exception->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+    CATCH cx_salv_msg INTO lr_salv_exception.
+      lv_error_text = lr_salv_exception->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+  ENDTRY.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form INI_SQL_STATEMENT
+*&---------------------------------------------------------------------*
+* Instantiate the statement object
+*----------------------------------------------------------------------*
+FORM ini_sql_statement .
+  IF lr_sql_connection IS BOUND.
+
+    TRY.
+
+* Get the SQL Statement reference using the instance of the connection
+        CREATE OBJECT lr_sql_statement
+          EXPORTING
+            con_ref = lr_sql_connection. " Database Connection
+
+* 10. Catch errors/exceptions (if any)
+      CATCH cx_parameter_invalid_type INTO lr_parameter_invalid_type.
+        lv_error_text = lr_parameter_invalid_type->get_text( ).
+*MESSAGE e000 WITH lv_error_text.
+
+      CATCH cx_parameter_invalid INTO lr_sql_parameter_invalid.
+        lv_error_text = lr_sql_parameter_invalid->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+      CATCH cx_sql_exception INTO lr_sql_exception.
+        lv_error_text = lr_sql_exception->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+      CATCH cx_salv_msg INTO lr_salv_exception.
+        lv_error_text = lr_salv_exception->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+    ENDTRY.
+
+    IF lr_sql_connection IS NOT BOUND.
+      MESSAGE 'No reference to SQL Statements made' TYPE 'I'.
+      LEAVE LIST-PROCESSING.
+    ENDIF.
+
+  ELSE.
+    MESSAGE 'No connection established' TYPE 'I'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form PREPARE_NATIVE_SQL_STRING
+*&---------------------------------------------------------------------*
+* Construct the SQL using Concatenate syntax or string operation
+*----------------------------------------------------------------------*
+FORM prepare_native_sql_string .
+
+* In line data declaration and converting selection option to a where clause string for S_MATNR
+  DATA(lr_seltab) = cl_lib_seltab=>new( it_sel = s_matnr[] ).
+  DATA(lv_where_clause_sel) = lr_seltab->sql_where_condition( iv_field = 'M.MATNR' ).
+
+* In line data declaration and converting selection option to a where clause string for S_MTART
+  DATA(lr_seltab2) = cl_lib_seltab=>new( it_sel = s_mtart[] ).
+  DATA(lv_where_clause_sel2) = lr_seltab2->sql_where_condition( iv_field = 'M.MTART' ).
+
+*--------------------------------------------------------------------*
+* Begin of script for HANA Database
+*--------------------------------------------------------------------*
+* Construct the SQL in SQL Console Eclipse and put it in a string ( Native SQL Only )
+* Modern sysntax for concatenation
+  lv_where_clause_statement = | SELECT M.MATNR, M.MTART, T.MAKTX |
+  && | FROM MARA AS M INNER JOIN MAKT AS T |
+  && | ON M.MATNR = T.MATNR |
+  && | WHERE M.MANDT = '{ sy-mandt }' |
+  && | AND T.SPRAS = '{ sy-langu }' |
+  && | AND { lv_where_clause_sel } |
+  && | AND { lv_where_clause_sel2 } |
+  && | ORDER BY M.MATNR |.
+*--------------------------------------------------------------------*
+* End of script for HANA Database
+*--------------------------------------------------------------------*
+
+** Modern sysntax for Concatenation
+* lv_where_mandt = |'| && |{ sy-mandt }| && |'|.
+* lv_where_spras = |'| && |{ sy-langu }| && |'|.
+*
+* lv_where_mandt = |M.MANDT = | && | { lv_where_mandt }|.
+* lv_where_spras = |T.SPRAS = | && | { lv_where_spras }|.
+*
+**--------------------------------------------------------------------*
+** Begin of script for ORACLE Database
+**--------------------------------------------------------------------*
+** Construct the SQL in SQL Console Eclipse and put it in a string ( Native SQL Only )
+* lv_where_clause_statement = | SELECT M.MATNR, M.MTART, T.MAKTX |
+* && | FROM MARA M, MAKT T |
+* && | WHERE M.MATNR = T.MATNR |
+* && | AND { lv_where_mandt } |
+* && | AND { lv_where_spras } |
+* && | AND { lv_where_clause_sel } |
+* && | AND { lv_where_clause_sel2 } |.
+**--------------------------------------------------------------------*
+** End of script for ORACLE Database
+**--------------------------------------------------------------------*
+
+* If you find difficulty in understanding above concatenate/string operation,
+* Then check below. It does the same thing as above.
+* CONCATENATE '''' sy-mandt '''' INTO lv_where_mandt.
+* CONCATENATE '''' sy-langu '''' INTO lv_where_spras.
+*
+* CONCATENATE 'M.MANDT = ' lv_where_mandt INTO lv_where_mandt SEPARATED BY space.
+* CONCATENATE 'T.SPRAS = ' lv_where_spras INTO lv_where_spras SEPARATED BY space.
+*
+* construct the sql in sql command editor in dbacockpit
+* below sql works for oracle database
+* concatenate 'SELECT M.MATNR, M.MTART, T.MAKTX'
+* 'FROM MARA M, MAKT T'
+* 'WHERE M.MATNR = T.MATNR'
+* 'AND' lv_where_mandt
+* 'AND' lv_where_spras
+* 'and' lv_where_clause_sel
+* 'and' lv_where_clause_sel2
+* into lv_where_clause_statement separated by space.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form ISSUE_NATIVE_SQL_CALL
+*&---------------------------------------------------------------------*
+* Issue Native SQL Call
+*----------------------------------------------------------------------*
+FORM issue_native_sql_call .
+
+  TRY.
+
+* Using the reference of the statement call the respective methods to execute the query
+      lr_sql_statement->execute_query(
+      EXPORTING
+      statement = lv_where_clause_statement " SELECT Statement Being Executed
+      hold_cursor = space
+      RECEIVING
+      result_set = lr_sql_result_set ). " Database Cursor
+
+* 10. Catch errors/exceptions (if any)
+    CATCH cx_parameter_invalid_type INTO lr_parameter_invalid_type.
+      lv_error_text = lr_parameter_invalid_type->get_text( ).
+*MESSAGE e000 WITH lv_error_text.
+
+    CATCH cx_parameter_invalid INTO lr_sql_parameter_invalid.
+*lv_error_text = lr_sql_parameter_invalid->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+*
+    CATCH cx_sql_exception INTO lr_sql_exception.
+      lv_error_text = lr_sql_exception->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+    CATCH cx_salv_msg INTO lr_salv_exception.
+      lv_error_text = lr_salv_exception->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+  ENDTRY.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form ASSIGN_TARGET_RESULT
+*&---------------------------------------------------------------------*
+* Assign Target variable for result set
+*----------------------------------------------------------------------*
+FORM assign_target_result .
+
+  TRY.
+
+* Get the result of the query in a table
+      GET REFERENCE OF lt_result INTO lr_data.
+      lr_sql_result_set->set_param_table(
+      EXPORTING
+      itab_ref = lr_data ). " Reference to Output Variable
+
+* 10. Catch errors/exceptions (if any)
+    CATCH cx_parameter_invalid_type INTO lr_parameter_invalid_type.
+      lv_error_text = lr_parameter_invalid_type->get_text( ).
+*MESSAGE e000 WITH lv_error_text.
+
+    CATCH cx_parameter_invalid INTO lr_sql_parameter_invalid.
+      lv_error_text = lr_sql_parameter_invalid->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+    CATCH cx_sql_exception INTO lr_sql_exception.
+      lv_error_text = lr_sql_exception->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+    CATCH cx_salv_msg INTO lr_salv_exception.
+      lv_error_text = lr_salv_exception->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+  ENDTRY.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form RETRIEVE_COMPLETE_RESULT_SET
+*&---------------------------------------------------------------------*
+* Retrieve Result set
+*----------------------------------------------------------------------*
+FORM retrieve_complete_result_set .
+
+  TRY.
+
+      lr_sql_result_set->next_package( ).
+
+    CATCH cx_parameter_invalid_type INTO lr_parameter_invalid_type.
+      lv_error_text = lr_parameter_invalid_type->get_text( ).
+*MESSAGE e000 WITH lv_error_text.
+
+    CATCH cx_parameter_invalid INTO lr_sql_parameter_invalid.
+      lv_error_text = lr_sql_parameter_invalid->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+    CATCH cx_sql_exception INTO lr_sql_exception.
+      lv_error_text = lr_sql_exception->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+    CATCH cx_salv_msg INTO lr_salv_exception.
+      lv_error_text = lr_salv_exception->get_text( ).
+*MESSAGE e001 WITH lv_error_text.
+
+  ENDTRY.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form CLOSE_QUERY
+*&---------------------------------------------------------------------*
+* Close the query, release resources
+*----------------------------------------------------------------------*
+FORM close_query .
+
+  lr_sql_result_set->close( ).
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form CLOSE_DB_CONNECTION
+*&---------------------------------------------------------------------*
+* Close DB connection
+*----------------------------------------------------------------------*
+FORM close_db_connection .
+
+  lr_sql_connection->close( ).
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form DISPLAY_RESULT
+*&---------------------------------------------------------------------*
+* Display ALV
+*----------------------------------------------------------------------*
+FORM display_result .
+
+* Display the data in an ALV
+  cl_salv_table=>factory(
+  IMPORTING
+  r_salv_table = lr_salv_alv " Basic Class Simple ALV Tables
+  CHANGING
+  t_table = lt_result ).
+
+* Show the output
+  lr_salv_alv->display( ).
+
+ENDFORM.
