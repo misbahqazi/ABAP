@@ -1,0 +1,43 @@
+*&---------------------------------------------------------------------*
+*& Report ZDEMO_BAPI_UPDATE
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZDEMO_BAPI_UPDATE.
+
+DATA: ls_attr TYPE BAPIBATCHATT,
+      ls_attrx TYPE BAPIBATCHATTX,
+      lt_return TYPE TABLE OF BAPIRET2.
+
+CONSTANTS : lv_matnr TYPE BAPIBATCHKEY-MATERIAL VALUE 'FG126',
+            lv_batch TYPE BAPIBATCHKEY-BATCH VALUE '0000000003'.
+
+
+ls_attr-prod_date = sy-datum.
+ls_attrx-prod_date = abap_true.
+
+ls_attr-expirydate = sy-datum.
+ls_attrx-expirydate = abap_true.
+
+CALL FUNCTION 'BAPI_BATCH_CHANGE'
+  EXPORTING
+    MATERIAL                 = lv_matnr
+    batch                    = lv_batch
+    batchattributes          = ls_attr
+    batchattributesx         = ls_attrx
+*   BATCHCONTROLFIELDS       =
+*   INTERNALNUMBERCOM        =
+*   EXTENSION1               =
+*   MATERIAL_EVG             =
+*   MATERIAL_LONG            =
+* IMPORTING
+*   BATCHATTRIBUTES          =
+ TABLES
+   RETURN                   = lt_return.
+
+*BREAK-POINT.
+IF lt_return IS INITIAL.
+CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'.
+ELSE.
+  CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+ENDIF.
