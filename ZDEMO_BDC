@@ -1,0 +1,227 @@
+*&---------------------------------------------------------------------*
+*& Report ZDEMO_BDC
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zdemo_bdcno NO STANDARD PAGE HEADING LINE-SIZE 255.
+
+TYPES : BEGIN OF lty_batch,
+          matnr TYPE matnr,
+          charg TYPE charg_d,
+          mfgdt TYPE char10,
+          expdt TYPE char10,
+          text  TYPE kztxt,
+          lichn TYPE char10,
+        END OF lty_batch,
+
+
+        BEGIN OF lty_log,
+          matnr    TYPE matnr,
+          charg    TYPE charg_d,
+          msgtype  LIKE bapiret2-type,
+          msgno    LIKE bapiret2-number,
+          msg(100) TYPE c,
+        END OF lty_log.
+
+DATA : lt_batch TYPE TABLE OF lty_batch,
+       wa_batch TYPE          lty_batch,
+
+       lt_log   TYPE TABLE OF lty_log,
+       wa_log   TYPE          lty_log,
+
+       opt      TYPE ctu_params,
+       i_msg    TYPE TABLE OF bdcmsgcoll WITH HEADER LINE,
+       bdcdata  TYPE TABLE OF bdcdata WITH HEADER LINE.
+
+SELECTION-SCREEN: BEGIN OF BLOCK b3 WITH FRAME TITLE TEXT-003.
+  PARAMETERS: p_file TYPE rlgrap-filename MODIF ID fil OBLIGATORY.
+  SELECTION-SCREEN SKIP.
+  PARAMETERS : da RADIOBUTTON GROUP g1,
+               he RADIOBUTTON GROUP g1,
+               bg RADIOBUTTON GROUP g1.
+SELECTION-SCREEN: END OF BLOCK b3.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+  PERFORM uploadfile USING p_file.
+
+START-OF-SELECTION.
+  IF da = 'X'.              " display all
+    opt-dismode = 'A'.
+  ELSEIF he = 'X'.          " only errors" background
+    opt-dismode = 'E'.
+  ELSEIF bg = 'X'.          " only errors
+    opt-dismode = 'N'.
+  ENDIF.
+
+  PERFORM upload.
+  PERFORM process_bdc.
+  PERFORM display_result.
+
+*&---------------------------------------------------------------------*
+*& Form upload
+*&---------------------------------------------------------------------*
+FORM upload .
+
+  DATA :i_tab_raw_data TYPE truxs_t_text_data.
+
+  CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+    EXPORTING
+      i_line_header        = 'X'
+      i_tab_raw_data       = i_tab_raw_data
+      i_filename           = p_file
+    TABLES
+      i_tab_converted_data = lt_batch
+    EXCEPTIONS
+      conversion_failed    = 1
+      OTHERS               = 2.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+          WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+ENDFORM.
+
+FORM process_bdc.
+
+  LOOP AT lt_batch INTO wa_batch.
+
+    PERFORM bdc_dynpro      USING 'SAPLCHRG' '1000'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '=ENTR'.
+    PERFORM bdc_field       USING 'BDC_CURSOR'
+                                  'DFBATCH-CHARG'.
+    PERFORM bdc_field       USING 'DFBATCH-MATNR'
+                                  wa_batch-matnr. ""'FG126'.
+    PERFORM bdc_field       USING 'DFBATCH-CHARG'
+                                  wa_batch-charg.  " '0000000003'.
+
+
+    PERFORM bdc_dynpro      USING 'SAPLCHRG' '1000'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '=SNST'.
+    PERFORM bdc_field       USING 'BDC_CURSOR'
+                                  'MCHA-LICHA'.
+    PERFORM bdc_field       USING 'MCHA-HSDAT'
+                                  wa_batch-mfgdt.
+    PERFORM bdc_field       USING 'DFBATCH-MHD_IO'
+                                  wa_batch-expdt. "'30.04.2020'.
+    PERFORM bdc_field       USING 'MCHA-LICHA'
+                                  wa_batch-lichn.  "'test123'.
+    PERFORM bdc_field       USING 'MCHA-LWEDT'
+                                  '02.01.2015'.
+
+
+    PERFORM bdc_dynpro      USING 'SAPLCHRG' '1000'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '=CLAS'.
+    PERFORM bdc_field       USING 'BDC_CURSOR'
+                                  'DFBATCH-KZTXT'.
+    PERFORM bdc_field       USING 'DFBATCH-SPRAS'
+                                  'EN'.
+    PERFORM bdc_field       USING 'DFBATCH-KZTXT'
+                                  wa_batch-text. "'demonstration'.
+
+
+    PERFORM bdc_dynpro      USING 'SAPLCHRG' '1000'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '=SAVE'.
+    PERFORM bdc_field       USING 'BDC_CURSOR'
+                                  'RCTMS-MWERT(02)'.
+
+
+    CALL TRANSACTION 'MSC2N' USING bdcdata OPTIONS FROM opt
+          MESSAGES INTO i_msg.
+
+    PERFORM format_msg.
+
+    CLEAR :bdcdata[],bdcdata.
+    CALL FUNCTION 'BUFFER_REFRESH_ALL'.
+  ENDLOOP.
+
+ENDFORM.
+
+FORM bdc_dynpro USING program dynpro.
+  CLEAR bdcdata.
+  bdcdata-program  = program.
+  bdcdata-dynpro   = dynpro.
+  bdcdata-dynbegin = 'X'.
+  APPEND bdcdata.
+ENDFORM.
+
+*-------------------------------------------------------------------*
+*        Insert field                                               *
+*-------------------------------------------------------------------*
+FORM bdc_field USING fnam fval.
+*  IF fval <> space.
+  CLEAR bdcdata.
+  bdcdata-fnam = fnam.
+  bdcdata-fval = fval.
+  APPEND bdcdata.
+*  ENDIF.
+ENDFORM.
+
+FORM uploadfile USING p_file.
+  DATA: ifiletable TYPE filetable.
+  DATA: xfiletable LIKE LINE OF ifiletable.
+  DATA: rc TYPE i.
+
+  CALL METHOD cl_gui_frontend_services=>file_open_dialog
+    CHANGING
+      file_table              = ifiletable
+      rc                      = rc
+    EXCEPTIONS
+      file_open_dialog_failed = 1
+      cntl_error              = 2
+      error_no_gui            = 3
+      not_supported_by_gui    = 4
+      OTHERS                  = 5.
+  READ TABLE ifiletable INTO xfiletable INDEX 1.
+  IF sy-subrc = 0.
+    p_file = xfiletable-filename.
+  ENDIF.
+
+ENDFORM.
+
+FORM format_msg .
+  LOOP AT i_msg .
+    wa_log-matnr = wa_batch-matnr.
+    wa_log-charg = wa_batch-charg.
+    wa_log-msgno   = i_msg-msgnr.
+    wa_log-msgtype = i_msg-msgtyp.
+
+    CALL FUNCTION 'FORMAT_MESSAGE'
+      EXPORTING
+        id        = i_msg-msgid
+        lang      = sy-langu
+        no        = i_msg-msgnr
+        v1        = i_msg-msgv1
+        v2        = i_msg-msgv2
+        v3        = i_msg-msgv3
+        v4        = i_msg-msgv4
+      IMPORTING
+        msg       = wa_log-msg
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+    IF i_msg-msgnr <> '344'.
+      APPEND wa_log TO lt_log.
+    ENDIF.
+  ENDLOOP.
+  REFRESH i_msg.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form display_result
+*&---------------------------------------------------------------------*
+FORM display_result .
+    TRY.
+      cl_salv_table=>factory(
+      IMPORTING
+        r_salv_table = go_alv
+      CHANGING
+        t_table      = lt_log ).
+    CATCH cx_salv_msg INTO DATA(go_msg).                "#EC NO_HANDLER
+  ENDTRY.
+ENDFORM.
