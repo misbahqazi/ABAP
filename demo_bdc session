@@ -1,0 +1,205 @@
+*&---------------------------------------------------------------------*
+*& Report ZDEMO_BDC
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zdemo_bdcno NO STANDARD PAGE HEADING LINE-SIZE 255.
+
+TYPES : BEGIN OF lty_batch,
+          matnr TYPE matnr,
+          charg TYPE charg_d,
+          mfgdt TYPE char10,
+          expdt TYPE char10,
+          text  TYPE kztxt,
+          lichn TYPE char10,
+        END OF lty_batch.
+
+DATA : lt_batch   TYPE TABLE OF lty_batch,
+       wa_batch   TYPE          lty_batch,
+
+       opt        TYPE ctu_params,
+       i_msg      TYPE TABLE OF bdcmsgcoll WITH HEADER LINE,
+       T_bdcdata  TYPE TABLE OF bdcdata,
+       WA_bdcdata TYPE bdcdata.
+
+DATA : go_alv  TYPE REF TO cl_salv_table.
+
+SELECTION-SCREEN: BEGIN OF BLOCK b3 WITH FRAME TITLE TEXT-003.
+  PARAMETERS: p_file TYPE rlgrap-filename MODIF ID fil OBLIGATORY.
+SELECTION-SCREEN: END OF BLOCK b3.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+  PERFORM uploadfile USING p_file.
+
+START-OF-SELECTION.
+
+  PERFORM upload.
+  PERFORM open_group.
+  PERFORM process_bdc.
+  PERFORM insert_data.
+  PERFORM close_group.
+
+*&---------------------------------------------------------------------*
+*& Form upload
+*&---------------------------------------------------------------------*
+FORM upload .
+
+  DATA :i_tab_raw_data TYPE truxs_t_text_data.
+
+  CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+    EXPORTING
+      i_line_header        = 'X'
+      i_tab_raw_data       = i_tab_raw_data
+      i_filename           = p_file
+    TABLES
+      i_tab_converted_data = lt_batch
+    EXCEPTIONS
+      conversion_failed    = 1
+      OTHERS               = 2.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+          WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+ENDFORM.
+
+FORM process_bdc.
+
+  LOOP AT lt_batch INTO wa_batch.
+
+    PERFORM fill_bdc_data USING :
+                                 'SAPLCHRG' '1000' 'X' '' '',
+                                 '' '' '' 'BDC_OKCODE' '=ENTR',
+                                 '' '' '' 'DFBATCH-MATNR' wa_batch-matnr,
+                                 '' '' '' 'DFBATCH-CHARG' wa_batch-charg,
+
+
+                                 'SAPLCHRG' '1000' 'X' '' '',
+                                 '' '' '' 'BDC_OKCODE' '=SNST',
+                                 '' '' '' 'BDC_CURSOR' 'MCHA-LICHA',
+                                 '' '' '' 'MCHA-HSDAT'
+                                 wa_batch-mfgdt,
+
+                                 '' '' '' 'DFBATCH-MHD_IO'
+                                 wa_batch-expdt ,"'30.04.2020'.
+
+                                 '' '' '' 'MCHA-LICHA'
+                                 wa_batch-lichn, "'test123'.
+
+
+                                 'SAPLCHRG' '1000' 'X' '' '',
+
+                                 '' '' '' 'BDC_OKCODE' '=CLAS',
+
+                                 '' '' '' 'BDC_CURSOR' 'DFBATCH-KZTXT',
+
+                                 '' '' '' 'DFBATCH-KZTXT' wa_batch-text, "'demonstration'.
+
+                                 'SAPLCHRG' '1000' 'X' '' '',
+                                 '' '' '' 'BDC_OKCODE' '=SAVE'.
+
+  ENDLOOP.
+
+ENDFORM.
+
+
+FORM fill_bdc_data  USING    VALUE(program)
+                             VALUE(dynpro)
+                             VALUE(begin)
+                             VALUE(fnam)
+                             VALUE(fval).
+  CLEAR wa_bdcdata.
+  IF begin IS NOT INITIAL.
+    wa_bdcdata-program  = program.
+    wa_bdcdata-dynpro   = dynpro.
+    wa_bdcdata-dynbegin = begin.
+    APPEND wa_bdcdata TO t_bdcdata.
+  ELSE.
+    wa_bdcdata-fnam = fnam.
+    wa_bdcdata-fval = fval.
+    APPEND wa_bdcdata TO t_bdcdata.
+  ENDIF.
+
+ENDFORM.
+
+FORM uploadfile USING p_file.
+  DATA: ifiletable TYPE filetable.
+  DATA: xfiletable LIKE LINE OF ifiletable.
+  DATA: rc TYPE i.
+
+  CALL METHOD cl_gui_frontend_services=>file_open_dialog
+    CHANGING
+      file_table              = ifiletable
+      rc                      = rc
+    EXCEPTIONS
+      file_open_dialog_failed = 1
+      cntl_error              = 2
+      error_no_gui            = 3
+      not_supported_by_gui    = 4
+      OTHERS                  = 5.
+  READ TABLE ifiletable INTO xfiletable INDEX 1.
+  IF sy-subrc = 0.
+    p_file = xfiletable-filename.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form open_group
+*------------------------------------------------*
+FORM open_group .
+  CALL FUNCTION 'BDC_OPEN_GROUP'
+    EXPORTING
+      group               = 'ZDEMO'
+      keep                = 'X'
+      user                = sy-uname
+    EXCEPTIONS
+      client_invalid      = 1
+      destination_invalid = 2
+      group_invalid       = 3
+      group_is_locked     = 4
+      holddate_invalid    = 5
+      internal_error      = 6
+      queue_error         = 7
+      running             = 8
+      system_lock_error   = 9
+      user_invalid        = 10
+      OTHERS              = 11.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form insert_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM insert_data .
+
+  CALL FUNCTION 'BDC_INSERT'
+    EXPORTING
+      tcode            = 'MSC2N'
+    TABLES
+      dynprotab        = t_bdcdata
+    EXCEPTIONS
+      internal_error   = 1
+      not_open         = 2
+      queue_error      = 3
+      tcode_invalid    = 4
+      printing_invalid = 5
+      posting_invalid  = 6
+      OTHERS           = 7.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form close_group
+*&---------------------------------------------------------------------*
+FORM close_group .
+
+  CALL FUNCTION 'BDC_CLOSE_GROUP'
+    EXCEPTIONS
+      not_open    = 1
+      queue_error = 2
+      OTHERS      = 3.
+
+ENDFORM.
