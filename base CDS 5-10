@@ -1,0 +1,56 @@
+@AbapCatalog.sqlViewName: 'zdemo111'
+@AbapCatalog.compiler.compareFilter: true
+@AbapCatalog.preserveKey: true
+@AccessControl.authorizationCheck: #CHECK
+@EndUserText.label: 'base'
+define view zdemo_basic as select from I_ActualPlanJournalEntryItem( P_PlanningCategory: 'ABC' )
+association[1]     to I_CompanyCode  as _CompanyCode on $projection.CompanyCode = _CompanyCode.CompanyCode
+{
+    
+@ObjectModel.foreignKey.association: '_CompanyCode'
+CompanyCode,
+FiscalPeriod,
+FiscalYear,
+@ObjectModel.foreignKey.association: '_GLAccountInChartOfAccounts'
+GLAccount,
+
+@Semantics.currencyCode: true
+CompanyCodeCurrency,
+
+@Semantics.amount.currencyCode: 'CompanyCodeCurrency'
+case when FiscalPeriod = '001'
+then ActualAmountInCompanyCodeCrcy end as actual,
+
+// the fiscalperiod low and high range can come from a different CDS view->association 
+@Semantics.amount.currencyCode: 'CompanyCodeCurrency'
+case when FiscalPeriod between '001' and '004' then
+ActualAmountInCompanyCodeCrcy end as quarter1, 
+
+@Semantics.amount.currencyCode: 'CompanyCodeCurrency'
+case when FiscalPeriod between '001' and '012'
+then ActualAmountInCompanyCodeCrcy end as yearly,
+
+@Semantics.amount.currencyCode: 'CompanyCodeCurrency'
+case when FiscalPeriod = '001'
+then PlanAmountInCompanyCodeCrcy end as plan1,
+
+@Semantics.amount.currencyCode: 'CompanyCodeCurrency'
+case when FiscalPeriod between '001' and '004' then
+PlanAmountInCompanyCodeCrcy end as quarterplan1,
+
+@Semantics.amount.currencyCode: 'CompanyCodeCurrency'
+case when FiscalPeriod between '001' and '012'
+then PlanAmountInCompanyCodeCrcy end as planyearly,
+
+
+PlanAmountInCompanyCodeCrcy,
+
+_CompanyCode
+
+}
+ 
+  
+  
+  
+  
+ 
