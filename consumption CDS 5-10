@@ -1,0 +1,53 @@
+@AbapCatalog.sqlViewName: 'zdemo2'
+@AbapCatalog.compiler.compareFilter: true
+@AbapCatalog.preserveKey: true
+@AccessControl.authorizationCheck: #CHECK
+@EndUserText.label: 'composite'
+@VDM.viewType: #CONSUMPTION
+define view zdemo_composite as select from zdemo_basic {
+//zdemo_basic
+
+
+CompanyCode,
+//@AnalyticsDetails.query.axis:#COLUMNS
+GLAccount,
+CompanyCodeCurrency,
+
+@DefaultAggregation: #SUM
+actual,
+@DefaultAggregation: #SUM
+quarter1,
+@DefaultAggregation: #SUM
+yearly,
+@DefaultAggregation: #SUM
+plan1,
+@DefaultAggregation: #SUM
+quarterplan1,
+@DefaultAggregation: #SUM
+planyearly,
+
+  //   Current year QTD Actuals / Previous Year QTD actuals
+@Semantics.amount.currencyCode: 'companycodecurrency'
+@DefaultAggregation: #FORMULA  
+@AnalyticsDetails.query.formula: 'NDIV0( actual - plan1 )'
+@AnalyticsDetails.query.decimals: 2
+1                             as avp, //     qtd_fullper,
+
+  //   Current year QTD Actuals / Previous Year QTD actuals
+@Semantics.amount.currencyCode: 'companycodecurrency'
+@DefaultAggregation: #FORMULA  
+@AnalyticsDetails.query.formula: 'NDIV0( quarter1 - quarterplan1 )'
+@AnalyticsDetails.query.decimals: 2
+1                             as qvp, //     qtd_fullper,
+
+  //   Current year QTD Actuals / Previous Year QTD actuals
+@Semantics.amount.currencyCode: 'companycodecurrency'
+@DefaultAggregation: #FORMULA 
+@AnalyticsDetails.query.formula: 'NDIV0( yearly - planyearly )'
+@AnalyticsDetails.query.decimals: 2
+1                             as yvp //     qtd_fullper,
+
+//( actual - plan1 ) as avp
+    
+} 
+ 
