@@ -1,0 +1,253 @@
+*&---------------------------------------------------------------------*
+*& Report ZDEMO_DAY2
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zdemo_day2.
+
+CLASS demo DEFINITION DEFERRED.
+
+DATA: go_demo TYPE REF TO demo.
+
+CLASS demo DEFINITION.
+  PUBLIC SECTION.
+    TYPES : BEGIN OF lty_tab,
+              matnr TYPE matnr,
+              matkl TYPE matkl,
+              maktx TYPE maktx,
+            END OF lty_tab.
+
+    DATA : gt_final  TYPE TABLE OF lty_tab,
+           gt_final2 TYPE STANDARD TABLE OF lty_tab WITH NON-UNIQUE SORTED KEY matkl COMPONENTS matkl.
+
+    METHODS main.
+ENDCLASS.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME.
+PARAMETERS:
+  rb_1  RADIOBUTTON GROUP gr1 USER-COMMAND sel DEFAULT 'X',
+  rb_2  RADIOBUTTON GROUP gr1,
+  rb_3  RADIOBUTTON GROUP gr1,
+  rb_4  RADIOBUTTON GROUP gr1,
+  rb_5  RADIOBUTTON GROUP gr1,
+  rb_6  RADIOBUTTON GROUP gr1,
+  rb_7  RADIOBUTTON GROUP gr1,
+  rb_8  RADIOBUTTON GROUP gr1,
+  rb_9  RADIOBUTTON GROUP gr1,
+  rb_10 RADIOBUTTON GROUP gr1,
+  rb_11 RADIOBUTTON GROUP gr1.
+
+
+SELECTION-SCREEN END OF BLOCK b1.
+
+INITIALIZATION.
+
+*** Create instance of local class
+  CREATE OBJECT go_demo.
+
+START-OF-SELECTION.
+
+  CALL METHOD go_demo->main( ).
+
+CLASS demo IMPLEMENTATION.
+  METHOD main.
+
+    CONSTANTS : lc_i     TYPE ddsign     VALUE 'I',
+                lc_eq    TYPE ddoption   VALUE 'EQ',
+                lc_matkl TYPE matkl VALUE 'A001'.
+
+    DATA: lv_rebate TYPE p DECIMALS 2 VALUE '0.10',
+          lv_high_rebate TYPE p DECIMALS 2 VALUE '0.30'.
+
+***   Internal table inline declaration
+    SELECT matnr,matkl FROM mara INTO TABLE @DATA(lt_tab) UP TO 1000 ROWS.
+
+    SELECT matnr, maktx FROM makt INTO TABLE @DATA(lt_makt)
+      FOR ALL ENTRIES IN @lt_tab
+      WHERE matnr = @lt_tab-matnr.
+
+***   Inline declaration of work area within loop
+    LOOP AT lt_tab INTO DATA(ls_tab).
+      READ TABLE lt_makt INTO DATA(ls_makt) WITH KEY matnr = ls_tab-matnr.
+      DATA(ls_final) = VALUE lty_tab( matnr = ls_tab-matnr
+                                      maktx = ls_makt-maktx
+                                      matkl = ls_tab-matkl ).
+
+      APPEND ls_final TO gt_final.
+    ENDLOOP.
+
+    IF rb_1 IS NOT INITIAL.
+
+***   Inline declaration for copy of internal table to another table
+      DATA(lt_final2) = gt_final[].
+
+***   In line declaration to get first material using index = 1
+      DATA(lv_matnr) = lt_final2[ 1 ]-matnr.
+
+***   inline declaration of a constant
+      DATA(lc_dummy) = 'Dummy'.
+
+***   Inline declaration of field catalog within loop
+      LOOP AT lt_final2 ASSIGNING FIELD-SYMBOL(<lfs_tab>).
+        <lfs_tab>-maktx = lc_dummy.
+      ENDLOOP.
+
+***   Create range using structure and passing values. /sapapo/matkl_rstr is a range structure for maktl
+      DATA(lr_range) = VALUE /sapapo/matkl_rstr( sign = lc_i option = lc_eq low = 'A001' ).
+
+***   Create range using select query
+      DATA: lt_range TYPE cfb_t_matkl_range,
+            lt_matnr TYPE /ceecv/rolo_t_matnr.
+
+***   Create range using ABAP 7.5
+      lt_matnr = VALUE #( FOR ls_matnr IN gt_final ( sign   = lc_i
+                                                     options = lc_eq
+                                                     low    = ls_matnr-matnr ) ).
+
+***   Create range using select query
+      SELECT DISTINCT ( @lc_i ), ( @lc_eq ), matkl AS low, ' ' AS high
+        FROM mara INTO TABLE @lt_range
+        WHERE matnr IN @lt_matnr
+        ORDER BY matkl.
+
+***   Filter value based on Filter declaration
+      gt_final2 = gt_final.
+
+      DATA(lt_final3) = FILTER #( gt_final2 USING KEY matkl WHERE matkl = lc_matkl ).
+      cl_demo_output=>display( gt_final ).
+
+    ELSEIF rb_2 IS NOT INITIAL.
+***   Use of FOR and Reduce expression for recursive loop
+      DATA itab TYPE TABLE OF i WITH EMPTY KEY.
+      itab = VALUE #( FOR j = 1 WHILE j <= 10 ( j ) ).
+      cl_demo_output=>write( itab ).
+
+      DATA(sum) = REDUCE i( INIT x = 0 FOR wa IN itab NEXT x = x + wa ).
+      cl_demo_output=>write( sum ).
+
+      cl_demo_output=>display( ).
+    ELSEIF rb_3 IS NOT INITIAL.
+*** Use of NEW and BASE expressions
+      TYPES:
+        BEGIN OF struct,
+          col1 TYPE c LENGTH 2,
+          col2 TYPE c LENGTH 2,
+          col3 TYPE c LENGTH 2,
+        END OF struct.
+
+      DATA(base1)   = VALUE struct( col1 = 'xx' col2 = 'yy' col3 = 'zz' ).
+
+      cl_demo_output=>write( base1 ).
+
+      DATA(ref1)  = NEW #( BASE base1 col1 = 'BB' ).
+
+      cl_demo_output=>write( ref1->* ).
+
+      cl_demo_output=>display( ).
+    ELSEIF rb_4 IS NOT INITIAL.
+****  Use of Let and For expressions
+      gt_final2 = VALUE #( LET lt_temp = gt_final IN FOR ls_temp IN lt_temp
+                  ( matnr = ls_temp-matnr
+                    matkl = ls_temp-matkl
+                    maktx = 'dummy' ) ).
+      cl_demo_output=>display( gt_final2 ).
+    ELSEIF rb_5 IS NOT INITIAL.
+* Including Embedded Expressions
+
+      DATA(lv_date) = |{ sy-datlo DATE = USER }|.
+      cl_demo_output=>write( lv_date ).
+
+      DATA(lv_time) = |{ sy-timlo TIME = ISO }|.
+      cl_demo_output=>write( lv_time ).
+
+      GET TIME STAMP FIELD DATA(tmstmp).
+
+      DATA(lv_timestmp) = | timestamp: | &&
+        |{ tmstmp TIMESTAMP = ISO TIMEZONE = 'CST' } {
+           tmstmp TIMESTAMP = ISO TIMEZONE = 'IST'  }|.
+      cl_demo_output=>write( lv_timestmp ).
+
+      cl_demo_output=>display( ).
+    ELSEIF rb_6 IS NOT INITIAL.
+* Build another internal table of typpe GT_OUTPUT with a different column name and excluding one field LAEDA
+      gt_final2 = CORRESPONDING #( gt_final MAPPING matnr = matnr EXCEPT matkl ).
+      cl_demo_output=>display( gt_final2 ).
+    ELSEIF rb_7 IS NOT INITIAL.
+***   select query COUNT/ARITHMETIC  expressions
+      SELECT mara~matnr,mard~lgort,
+        COUNT( DISTINCT ( mard~matnr ) ) AS distinct_mat, " Unique Number of Material
+        COUNT( DISTINCT ( mard~werks ) ) AS distinct_plant, " Unique Number of Plant
+        SUM( mard~labst ) AS sum_unrest,
+        AVG( mard~insme ) AS avg_qlt_insp,
+        SUM( mard~vmspe ) AS sum_blocked
+        FROM mara AS mara INNER JOIN mard AS mard
+        ON mara~matnr EQ mard~matnr INTO TABLE @DATA(lt_final) UP TO 1000 ROWS
+      WHERE mard~matnr = '000000000000000073'
+        AND mard~lgort IN ('171A','101A')
+        GROUP BY mara~matnr,mard~lgort.
+
+      IF sy-subrc = 0.
+        cl_demo_output=>display( lt_final ).
+      ENDIF.
+    ELSEIF rb_8 IS NOT INITIAL.
+
+      SELECT ebeln,werks,
+
+             CEIL( netpr ) AS whole_ord_net,
+             FLOOR( netpr ) as least_ord_net,
+            ( @lv_rebate * netpr ) AS rebate,
+            ( netpr - ( @lv_rebate * netpr ) ) AS act_net,
+
+      CASE WHEN werks = '1710' " For specific plant
+        THEN @lv_rebate
+        ELSE @lv_high_rebate
+      END AS rebate_type,
+
+      CASE WHEN werks = '1710' " For specific plant
+        THEN 'low rebate'
+        ELSE 'high rebate'
+      END AS low_high FROM ekpo UP TO 1000 ROWS
+      INTO TABLE @DATA(lt_po).
+*      WHERE werks IN ('1710','1010').
+
+      IF sy-subrc = 0.
+        cl_demo_output=>display( lt_po ).
+      ENDIF.
+    ELSEIF rb_9 IS NOT INITIAL.
+***   Concatenation and constant declaration
+      SELECT lifnr && '(' && name1 && ')' AS Vendor, ORT01 as city,
+        ( 'India' ) as country
+        FROM lfa1 INTO TABLE @DATA(lt_data) UP TO 100 ROWS.
+        IF sy-subrc = 0.
+          cl_demo_output=>display( lt_data ).
+        ENDIF.
+    ELSEIF rb_10 IS NOT INITIAL.
+*** HAVING clause
+      SELECT matnr,matkl FROM mara INTO TABLE @lt_tab UP TO 1000 ROWS
+        GROUP BY matnr,matkl
+        HAVING matnr > '000000000000000063' AND
+        matnr < '000000000000000179'.
+
+      SELECT matnr, maktx FROM makt INTO TABLE @lt_makt
+        FOR ALL ENTRIES IN @lt_tab
+        WHERE matnr = @lt_tab-matnr.
+      CLEAR gt_final.
+      LOOP AT lt_tab INTO ls_tab.
+        READ TABLE lt_makt INTO ls_makt WITH KEY matnr = ls_tab-matnr.
+        ls_final = VALUE lty_tab( matnr = ls_tab-matnr
+                                  maktx = ls_makt-maktx
+                                  matkl = ls_tab-matkl ).
+
+        APPEND ls_final TO gt_final.
+      ENDLOOP.
+      cl_demo_output=>display( gt_final ).
+    ELSEIF rb_11 IS NOT INITIAL.
+      SELECT SINGLE @abap_true FROM mara
+        INTO @DATA(lv_exists)
+        WHERE matnr = '000000000000000073'.
+      IF lv_exists = abap_true.
+        WRITE:/ 'Material 000000000000000073 Exists!'.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.   
