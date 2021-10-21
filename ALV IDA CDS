@@ -1,0 +1,129 @@
+REPORT yrep_ALV_IDA_CDS.
+
+CLASS lcl_exception DEFINITION DEFERRED.
+
+TABLES: regup,bkpf.
+
+DATA: go_exe   TYPE REF TO lcl_exception,
+      gv_error TYPE string.
+
+CONSTANTS: gc_actvt TYPE activ_auth VALUE '03',
+           gc_fbtch TYPE fbtch VALUE '03'.
+           
+CLASS lcl_exception DEFINITION.
+
+  PUBLIC SECTION.
+
+    DATA: lo_full_ida TYPE REF TO if_salv_gui_fullscreen_ida,
+          lo_ida      TYPE REF TO if_salv_gui_table_ida,
+          lo_msg      TYPE REF TO cx_salv_msg               ##NEEDED.
+
+    METHODS :
+      f4_help_poken IMPORTING im_v_dynfld TYPE help_info-dynprofld,
+      f4_help_laufi EXPORTING ex_v_laufi TYPE laufi,
+      get_data_display.
+
+ENDCLASS.
+
+SELECTION-SCREEN : BEGIN OF BLOCK input WITH FRAME TITLE TEXT-001.
+  SELECT-OPTIONS:s_laufd FOR regup-laufd,
+                 s_laufi FOR regup-laufi,
+                 s_lifnr FOR regup-lifnr,
+                 s_bukrs FOR regup-bukrs OBLIGATORY,
+                 s_poken FOR regup-poken,
+                 s_belnr FOR regup-belnr,
+                 s_usnam FOR bkpf-usnam,
+                 s_zlsch FOR regup-zlsch.
+SELECTION-SCREEN : END OF BLOCK input.
+
+INITIALIZATION.
+
+* Create instance of local class
+  CREATE OBJECT go_exe.
+  
+START-OF-SELECTION.
+  go_exe->get_data_display( ).
+
+CLASS lcl_exception IMPLEMENTATION.
+  METHOD get_data_display.
+
+    TRY.
+        cl_salv_gui_table_ida=>create_for_cds_view(
+          EXPORTING
+            iv_cds_view_name      = 'YFITC_PAYMENT_EXCEPTN'
+          RECEIVING
+            ro_alv_gui_table_ida  = lo_ida ).
+      CATCH cx_salv_db_connection          " Error connecting to database
+            cx_salv_db_table_not_supported " DB table / view is not supported
+            cx_salv_ida_contract_violation " IDA API contract violated by caller
+            cx_salv_function_not_supported INTO DATA(lo_msg). " Funcionality is not supported
+        MESSAGE lo_msg TYPE 'I'.
+    ENDTRY.
+
+    DATA(lo_range_collect) = NEW cl_salv_range_tab_collector( ).
+
+*   Run Date
+    lo_range_collect->add_ranges_for_name(
+      EXPORTING iv_name   = 'RUNDATE'
+                it_ranges = s_laufd[] ).
+*   Run ID
+    lo_range_collect->add_ranges_for_name(
+      EXPORTING iv_name   = 'PAYMENTRUNID'
+                it_ranges = s_laufi[] ).
+
+*   Vendor
+    lo_range_collect->add_ranges_for_name(
+      EXPORTING iv_name   = 'VENDOR'
+                it_ranges = s_lifnr[] ).
+
+*   Company Code
+    lo_range_collect->add_ranges_for_name(
+      EXPORTING iv_name   = 'COMPANYCODE'
+                it_ranges = s_bukrs[] ).
+
+*   Error Code
+    lo_range_collect->add_ranges_for_name(
+      EXPORTING iv_name   = 'POKEN'
+                it_ranges = s_poken[] ).
+
+*   Document Number
+    lo_range_collect->add_ranges_for_name(
+      EXPORTING iv_name   = 'DOCUMENTNUMBER'
+                it_ranges = s_belnr[] ).
+
+*   Created By
+    lo_range_collect->add_ranges_for_name(
+      EXPORTING iv_name   = 'CREATEDBY'
+                it_ranges = s_usnam[] ).
+
+*   Payment Method
+    lo_range_collect->add_ranges_for_name(
+      EXPORTING iv_name   = 'PAYMENTMETHOD'
+                it_ranges = s_zlsch[] ).
+
+    lo_range_collect->get_collected_ranges(
+      IMPORTING et_named_ranges = DATA(li_range) ).
+
+* Create Reference for Condition Factory
+    DATA(lo_cond_factory) = lo_ida->condition_factory( ).
+
+* Set Select Options
+    lo_ida->set_select_options(
+    EXPORTING
+      it_ranges = li_range ).
+
+*   Report Header
+    lo_ida->display_options( )->set_title( iv_title = 'Payment Exception Report'(002) ).
+
+*   Zebra Pattern
+    lo_ida->display_options( )->enable_alternating_row_pattern( ).
+
+*   Fullscreen ALV
+    lo_ida->fullscreen( RECEIVING ro_fullscreen = lo_full_ida ).
+
+*   Display
+    lo_full_ida->display( ).
+
+  ENDMETHOD.
+
+ENDCLASS.
